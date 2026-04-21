@@ -1,1 +1,1 @@
-Login button is blue
+Login button is red
