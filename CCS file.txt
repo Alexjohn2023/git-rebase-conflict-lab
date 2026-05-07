@@ -1,0 +1,280 @@
+Alexander Njoku Foundation — AWS Infrastructure Documentation
+📘 Overview
+
+This documentation covers the full deployment, troubleshooting, and optimization of the Alexander Njoku Foundation website using Amazon S3, CloudFront, Route 53, and AWS Certificate Manager (ACM).
+
+It includes:
+
+System architecture
+
+Setup steps
+
+Common issues encountered and their resolutions
+
+Configuration details
+
+DNS and SSL validation
+
+Final verification and best practices
+
+🧩 1. System Architecture
+
+Objective:
+Host a static website for the Alexander Njoku Foundation with a custom domain and secure HTTPS delivery across all global regions.
+
+Architecture Diagram
+End User Browser
+        │
+        ▼
+CloudFront Distribution (Global Edge Network)
+        │
+        ▼
+S3 Bucket (Static Website Hosting)
+        │
+        ▼
+Route 53 (DNS Resolution)
+
+Components Used
+Service	Purpose
+Amazon S3	Static file hosting (HTML, CSS, JS)
+CloudFront	CDN for caching, HTTPS termination
+AWS Certificate Manager (ACM)	SSL certificate management
+Amazon Route 53	Domain registration and DNS management
+⚙️ 2. Prerequisites
+
+AWS account with administrative access
+
+Domain registered and hosted in Route 53
+
+S3 bucket created for static hosting
+
+SSL certificate requested and validated in ACM (us-east-1 region)
+
+🪣 3. S3 Configuration
+Step 3.1 — Create the S3 Bucket
+
+Bucket name: alexandernjokufoundation.org
+
+⚠️ The bucket name must exactly match the custom domain name.
+
+Step 3.2 — Enable Static Website Hosting
+
+Navigate to:
+S3 → alexandernjokufoundation.org → Properties → Static website hosting
+
+Settings:
+
+Enable Static website hosting
+
+Host a static website
+
+Index document: index.html
+
+Error document: error.html (optional)
+
+Bucket website endpoint:
+http://alexandernjokufoundation.org.s3-website-us-east-1.amazonaws.com
+
+⚠️ The S3 website endpoint only supports HTTP, not HTTPS.
+
+Step 3.3 — Make Objects Public
+
+Update bucket policy to allow CloudFront access:
+
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublicReadForGetBucketObjects",
+      "Effect": "Allow",
+      "Principal": "*",
+      "Action": "s3:GetObject",
+      "Resource": "arn:aws:s3:::alexandernjokufoundation.org/*"
+    }
+  ]
+}
+
+☁️ 4. CloudFront Configuration
+Step 4.1 — Create CloudFront Distribution
+
+Origin Settings:
+
+Parameter	Value
+Origin Domain Name	alexandernjokufoundation.org.s3-website-us-east-1.amazonaws.com
+Protocol	HTTP Only
+Port	80
+Origin Path	(empty)
+
+If you use HTTPS or an incorrect S3 endpoint, CloudFront will return a 504 Gateway Timeout.
+
+Step 4.2 — Default Behavior Settings
+Setting	Value
+Viewer Protocol Policy	Redirect HTTP → HTTPS
+Allowed Methods	GET, HEAD
+Cached HTTP Methods	GET, HEAD
+Cache Policy	CachingOptimized
+Compress Objects Automatically	Yes
+Origin Request Policy	None (unless dynamic)
+Step 4.3 — SSL Certificate
+
+Under General → Custom SSL Certificate, choose:
+
+Certificate from AWS Certificate Manager
+
+Security policy: TLSv1.2_2021
+
+TLSv1.3_2025 was initially used but caused “protocol_version” errors.
+TLS 1.2 ensures compatibility across all browsers.
+
+Step 4.4 — Alternate Domain Names (CNAMEs)
+alexandernjokufoundation.org
+www.alexandernjokufoundation.org
+
+🧭 5. Route 53 DNS Configuration
+Step 5.1 — Apex Domain Record
+Name	Type	Value	Routing	TTL
+alexandernjokufoundation.org	A (Alias)	d2q7cyyr9zfw7v.cloudfront.net	Simple	300
+Step 5.2 — WWW Subdomain Record
+Name	Type	Value	Routing	TTL
+www.alexandernjokufoundation.org
+	A (Alias)	d2q7cyyr9zfw7v.cloudfront.net	Simple	300
+
+Avoid using a CNAME for the apex domain — CloudFront requires an Alias A record.
+
+Step 5.3 — Validation Records
+
+Leave any _acm-validation CNAMEs untouched — they are needed for SSL renewal.
+
+🔍 6. Troubleshooting History
+Issue	Root Cause	Resolution
+504 Gateway Timeout	CloudFront origin using HTTPS on S3 website endpoint	Changed origin to HTTP-only
+DNS Resolution Failed	Origin domain mismatch	Corrected to alexandernjokufoundation.org.s3-website-us-east-1.amazonaws.com
+SSL “protocol_version” Error	TLS 1.3-only policy	Changed to TLSv1.2_2021
+NXDOMAIN for www	Missing www record	Added A-alias record for www
+Record Already Exists	Duplicate www record	Deleted old and recreated alias
+CloudFront Health Failures	Incorrect S3 endpoint	Updated origin to exact S3 URL
+🌎 7. Health Checker Verification
+
+CloudFront global edge servers tested connectivity to the origin.
+
+Region	Status	Resolved IP
+Tokyo	✅ 200 OK	18.65.185.3
+Singapore	✅ 200 OK	3.171.198.82
+Sydney	✅ 200 OK	18.67.93.100
+Ireland	✅ 200 OK	54.230.114.19
+Virginia	✅ 200 OK	3.167.69.57
+
+✅ All edge locations successfully connected with 200 OK responses.
+
+🔐 8. HTTPS Validation
+
+After propagation, both:
+
+https://alexandernjokufoundation.org
+
+https://www.alexandernjokufoundation.org
+
+loaded with:
+
+Valid ACM SSL certificate
+
+Full-chain HTTPS encryption
+
+Redirected HTTP → HTTPS correctly
+
+🚀 9. Deployment Verification
+
+Final website rendering successfully:
+
+Welcome to the Alexander Njoku Foundation
+Our mission is to empower communities through education, innovation, and compassion.
+This website is proudly hosted on Amazon S3.
+© 2025 Alexander Njoku Foundation
+
+
+✅ HTTPS: Working
+✅ Apex Domain: Working
+✅ WWW Domain: Working
+✅ Global Caching: Verified
+✅ Health Checkers: All Green
+
+🔁 10. Optional Enhancements
+🔹 Redirect www → Apex
+
+Create a CloudFront Function:
+
+function handler(event) {
+  var request = event.request;
+  var host = request.headers.host.value;
+  if (host === 'www.alexandernjokufoundation.org') {
+    return {
+      statusCode: 301,
+      statusDescription: 'Moved Permanently',
+      headers: {
+        "location": { "value": "https://alexandernjokufoundation.org" }
+      }
+    };
+  }
+  return request;
+}
+
+🔹 Add Security Headers
+
+Add custom headers via CloudFront Function:
+
+Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+X-Frame-Options: DENY
+X-Content-Type-Options: nosniff
+Referrer-Policy: same-origin
+Permissions-Policy: geolocation=()
+
+🔹 Deployment Script
+
+Automate updates and cache invalidation:
+
+aws s3 sync ./site s3://alexandernjokufoundation.org --delete
+aws cloudfront create-invalidation --distribution-id E1WZ2G7I8Z648T --paths "/*"
+
+🧠 11. Key Takeaways
+Lesson	Explanation
+Exact DNS strings matter	Even one typo breaks origin resolution
+S3 website endpoints only support HTTP	HTTPS must terminate at CloudFront
+Always use us-east-1 for CloudFront SSL certificates	Required by ACM
+TLS policy compatibility	Use TLSv1.2_2021 for full client support
+Health checkers = your best diagnostic tool	They show true global connectivity status
+🏁 12. Final System State Summary
+Component	Status	Notes
+S3 Bucket	✅ Online	Public static hosting enabled
+CloudFront Distribution	✅ Deployed	Origin reachable, TLSv1.2_2021
+Route 53 DNS	✅ Configured	Both apex and www
+ACM Certificate	✅ Valid	Covers apex + www
+Global Health	✅ 200 OK in all regions	
+Website Access	✅ HTTPS functional	Live globally
+🌟 13. Access Information
+Resource	URL
+Live Website	https://alexandernjokufoundation.org
+
+CloudFront Domain	https://d2q7cyyr9zfw7v.cloudfront.net
+
+S3 Website Endpoint	http://alexandernjokufoundation.org.s3-website-us-east-1.amazonaws.com
+🧩 14. Future Improvements
+
+Move from public S3 website hosting to private REST endpoint + OAC
+
+Add AWS WAF for security filtering
+
+Configure Origin Shield for better cache efficiency
+
+Add CloudWatch dashboards for real-time latency and error metrics
+
+Implement CI/CD pipeline with GitHub Actions → S3 → CloudFront
+
+🧾 15. Document Metadata
+Field	Description
+Document Name	AWS Hosting & Deployment Documentation
+Project	Alexander Njoku Foundation
+Created	November 27–28, 2025
+Authors: Technical Deployment Team
+Reviewed by	Foundation Web Operations
+Version	v1.0
+Status	Production-ready 
